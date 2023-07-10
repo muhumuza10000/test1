@@ -1,57 +1,42 @@
-create warehouse transforming;
-create database raw;
-create database analytics;
-create schema raw.jaffle_shop;
-create schema raw.stripe;
 
-create table raw.jaffle_shop.customers 
-( id integer,
-  first_name varchar,
-  last_name varchar
-);
+with customers as (
+    select 
+      id as customer_id,
+      first_name,
+      last_name
+    from raw.jaffle_shop.customers
+),
 
-copy into raw.jaffle_shop.customers (id, first_name, last_name)
-from 's3://dbt-tutorial-public/jaffle_shop_customers.csv'
-file_format = (
-    type = 'CSV'
-    field_delimiter = ','
-    skip_header = 1
-    ); 
+orders as (
+     select
+       id as order_id,
+       user_id as customer_id,
+       order_date,
+       status
+     from raw.jaffle_shop.orders
+),
 
-create table raw.jaffle_shop.orders
-( id integer,
-  user_id integer,
-  order_date date,
-  status varchar,
-  _etl_loaded_at timestamp default current_timestamp
-);
+customer_orders as (
+     select customer_id,
+       min(order_date) as first_order_date,
+       max(order_date) as most_recent_order_date,
+       count(order_id) as number_of_orders
+     from orders
 
-copy into raw.jaffle_shop.orders (id, user_id, order_date, status)
-from 's3://dbt-tutorial-public/jaffle_shop_orders.csv'
-file_format = (
-    type = 'CSV'
-    field_delimiter = ','
-    skip_header = 1
-    );
+     group by 1
+),
 
-create table raw.stripe.payment  
- (id integer,
-  order_id integer,
-  payment_method varchar,
-  status varchar,
-  amount integer,
-  created date,
-  _batched_at timestamp default current_timestamp
-); 
+final as(
+     select
+        customer.customer_id,
+        customer.first_name,
+        customer.last_name,
+        customer_orders.first_order_date,
+        customer_orders.most_recent_order_date,
+        coalesce(customer_orders.number_of_orders,0) as number_of_orders
+     from customers
 
-copy into raw.stripe.payment (id, order_id, payment_method, status, amount, created)
-from 's3://dbt-tutorial-public/stripe_payments.csv'
-file_format = (
-    type = 'CSV'
-    field_delimiter = ','
-    skip_header = 1
-    );
+     left join customer_orders using (customer_id)
+)
 
-select * from raw.jaffle_shop.customers;
-select * from raw.jaffle_shop.orders;
-select * from raw.stripe.payment;   
+select * from final
