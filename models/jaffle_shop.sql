@@ -21,8 +21,8 @@ orders as (
 with customers as (
     select * from {{ref('stg_customers')}}
 ),
-with orders as (
-    select * from {{('stg_orders')}}
+ orders as (
+    select * from {{ref('stg_orders')}}
 ),
 
 
